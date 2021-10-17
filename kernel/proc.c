@@ -84,6 +84,18 @@ allocpid() {
 
   return pid;
 }
+//! calc the number of not unused proc
+int calc_unused()
+{
+  struct proc *p;
+  int cnt=0;
+  for (int i=0;i<NPROC;i++){
+    p = &proc[i];
+    if (p->state != UNUSED) cnt++;
+  }
+  return cnt;
+}
+
 
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
@@ -150,6 +162,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->tracenum = 0;
 }
 
 // Create a user page table for a given process,
@@ -276,7 +289,7 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
-
+  np->tracenum = p->tracenum;  //* 添加跟踪的进程号
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -384,6 +397,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+  p->tracenum = 0;
 
   release(&original_parent->lock);
 

@@ -78,7 +78,7 @@ testmem() {
 void
 testcall() {
   struct sysinfo info;
-  
+  // printf("test va:%x\n",&info);
   if (sysinfo(&info) < 0) {
     printf("FAIL: sysinfo failed\n");
     exit(1);
