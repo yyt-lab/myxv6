@@ -101,7 +101,7 @@ runcmd(struct cmd *cmd)
     pcmd = (struct pipecmd*)cmd;
     if(pipe(p) < 0)
       panic("pipe");
-    if(fork1() == 0){
+    if(fork1() == 0){  // ! 创建子进程，再子进程中执行run_cmd
       close(1);
       dup(p[1]);
       close(p[0]);

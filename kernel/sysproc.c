@@ -55,13 +55,13 @@ sys_sbrk(void)
 uint64
 sys_sleep(void)
 {
-  int n;
+  int n; // * 存放了系统调用的 第一个参数
   uint ticks0;
 
   if(argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
-  ticks0 = ticks;
+  ticks0 = ticks;  // * 当前时间
   while(ticks - ticks0 < n){
     if(myproc()->killed){
       release(&tickslock);
@@ -95,3 +95,4 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
