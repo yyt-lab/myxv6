@@ -10,7 +10,7 @@ _entry:
         # sp = stack0 + (hartid * 4096)
         la sp, stack0
         li a0, 1024*4
-	csrr a1, mhartid
+	csrr a1, mhartid  // 读处理器核心 0 表示单核心 1双核心  mhartid 赋值给a1
         addi a1, a1, 1
         mul a0, a0, a1
         add sp, sp, a0
