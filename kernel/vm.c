@@ -56,7 +56,7 @@ kvminithart()
   sfence_vma();
 }
 
-// Return the address of the PTE in page table pagetable
+//*Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page-table pages.
 //
@@ -68,6 +68,9 @@ kvminithart()
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
+// * PX macro returns the 9bits of indices 
+// * PTE2PA macro returns the base physical addr of the PTE 
+// * kalloc func returns the allocated page's pointer of the page
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
@@ -85,7 +88,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
-  return &pagetable[PX(0, va)];
+  return &pagetable[PX(0, va)]; //*  level = 0 时没有检查
 }
 
 // Look up a virtual address, return the physical address,
@@ -103,7 +106,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     return 0;
-  if((*pte & PTE_V) == 0)
+  if((*pte & PTE_V) == 0)  // * should be valid & user pte
     return 0;
   if((*pte & PTE_U) == 0)
     return 0;
@@ -152,7 +155,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   pte_t *pte;
 
   a = PGROUNDDOWN(va);
-  last = PGROUNDDOWN(va + size - 1);
+  last = PGROUNDDOWN(va + size - 1); // * the last pte will contain the last part of the va+size
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
@@ -184,7 +187,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V)
+    if(PTE_FLAGS(*pte) == PTE_V) // ! 没有rwx的权限 -> 仅有V一位：表示是不是叶子节点
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
@@ -225,6 +228,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
+// ! 由于分配页面 & 删除页面都是以整页为基础，所以会调用PGROUNDUP()宏，将页面对其
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
@@ -255,6 +259,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
+// ! 删除页面也同理，需要将页面对齐之后，再调用free函数释放
 uint64
 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
@@ -277,12 +282,12 @@ freewalk(pagetable_t pagetable)
   // there are 2^9 = 512 PTEs in a page table.
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
-    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){  // * 中间节点
       // this PTE points to a lower-level page table.
       uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t)child);
+      freewalk((pagetable_t)child); //* recursively free pg_table
       pagetable[i] = 0;
-    } else if(pte & PTE_V){
+    } else if(pte & PTE_V){  // * 真正的子节点
       panic("freewalk: leaf");
     }
   }
@@ -295,8 +300,8 @@ void
 uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
-    uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
-  freewalk(pagetable);
+    uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1); // * 范围内清空pgtable叶子节点&物理页的信息
+  freewalk(pagetable); // * recursive clear page that pg_table used
 }
 
 // Given a parent process's page table, copy
@@ -438,5 +443,34 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+
+int depth = 1;
+void vmprint(pagetable_t pgtable)
+{
+  for (int i=0;i<512;i++){
+    pte_t pte = pgtable[i]; // * 先取出的是pgtable entry，先验证pte的权限位
+    if (pte && ((pte & PTE_V) == 1)){
+      switch(depth){
+        case 1:break;
+        case 2:{
+          printf(".. ");
+          break;
+        } 
+        case 3: {
+          printf(".. .. ");
+          break;
+        }
+        default : ;
+      }
+      printf("..%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        depth++;
+        vmprint((pagetable_t)PTE2PA(pte));
+        depth--;
+      }
+    }
   }
 }

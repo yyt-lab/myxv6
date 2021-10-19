@@ -43,6 +43,7 @@ freerange(void *pa_start, void *pa_end)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
+// * pa需要对齐
 void
 kfree(void *pa)
 {
@@ -66,7 +67,7 @@ kfree(void *pa)
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 void *
-kalloc(void)
+kalloc(void)  // * 当freelist用尽之后，就无法再产生新的page了，r返回NULL
 {
   struct run *r;
 
