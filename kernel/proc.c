@@ -106,6 +106,14 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  p->proc_kernel_pagetable = prockvminit();
+  // Allocate a page for the process's kernel stack.
+  // Map it high in memory, followed by an invalid
+  // guard page.
+  uint64 va = KSTACK((int) (p - proc));
+  uint64 phyaddr = kvmpa(va);
+  proc_kvmmap(p->proc_kernel_pagetable,va,phyaddr, PGSIZE, PTE_R | PTE_W);
+
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -141,7 +149,12 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  // printf("user pgtable free ok \n");
+  if (p->proc_kernel_pagetable)
+    proc_freekernelpgtable(p->proc_kernel_pagetable);
+  // printf("kernel pgtable free ok \n");
   p->pagetable = 0;
+  p->proc_kernel_pagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -178,7 +191,7 @@ proc_pagetable(struct proc *p)
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-    uvmfree(pagetable, 0);
+    uvmfree(pagetable, 0);  // * pgtable清除中间节点的信息
     return 0;
   }
 
@@ -193,6 +206,12 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
+}
+
+void
+proc_freekernelpgtable(pagetable_t pagetable)
+{
+  proc_kvmfree(pagetable);
 }
 
 // a user program that calls exec("/init")
@@ -227,9 +246,7 @@ userinit(void)
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
-
   p->state = RUNNABLE;
-
   release(&p->lock);
 }
 
@@ -473,16 +490,20 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        w_satp(MAKE_SATP(p->proc_kernel_pagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        kvminithart();
         c->proc = 0;
-
         found = 1;
       }
+
       release(&p->lock);
     }
+
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();

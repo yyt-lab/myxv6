@@ -55,6 +55,39 @@ kvminithart()
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
+// ! create proc pagetable 
+pagetable_t
+prockvminit(void)
+{
+  pagetable_t proc_kpgtable;
+  proc_kpgtable = (pagetable_t) kalloc();
+  if (proc_kpgtable == 0) return 0;  // * no enough space 
+  memset(proc_kpgtable, 0, PGSIZE);
+
+  // uart registers
+  proc_kvmmap(proc_kpgtable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  proc_kvmmap(proc_kpgtable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // CLINT
+  proc_kvmmap(proc_kpgtable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+  // PLIC
+  proc_kvmmap(proc_kpgtable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  proc_kvmmap(proc_kpgtable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  proc_kvmmap(proc_kpgtable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  proc_kvmmap(proc_kpgtable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return proc_kpgtable;
+}
+
 
 //*Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
@@ -122,6 +155,15 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 {
   if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
+}
+
+// ! add a mapping to the process kernel page table.
+// does not flush TLB or enable paging.
+void
+proc_kvmmap(pagetable_t proc_kpgtable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(proc_kpgtable, va, sz, pa, perm) != 0)
+    panic("proc_kernel_pgtable");
 }
 
 // translate a kernel virtual address to
@@ -294,6 +336,26 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+// Recursively free page-table pages.
+// All leaf mappings must already have been removed.
+void
+proc_freewalk(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){  // * 中间节点
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      proc_freewalk((pagetable_t)child); //* recursively free pg_table
+      pagetable[i] = 0;
+    } else if(pte & PTE_V){  // * 真正的子节点
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
+}
+
 // Free user memory pages,
 // then free page-table pages.
 void
@@ -301,9 +363,16 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1); // * 范围内清空pgtable叶子节点&物理页的信息
-  freewalk(pagetable); // * recursive clear page that pg_table used
+  freewalk(pagetable); // * recursive clear middle page that pg_table used
 }
 
+// Free kernel memory pages,
+// then donot free page-table pages.
+void
+proc_kvmfree(pagetable_t pagetable)
+{
+  proc_freewalk(pagetable); // * recursive clear middle page that pg_table used
+}
 // Given a parent process's page table, copy
 // its memory into a child's page table.
 // Copies both the page table and the
