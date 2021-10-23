@@ -239,7 +239,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-
+  kernel_pgt_addmap(p->pagetable,p->proc_kernel_pagetable,0,p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -259,14 +259,19 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
+  int oldsz = sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if(sz + n > PLIC ||(sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    kernel_pgt_addmap(p->pagetable,p->proc_kernel_pagetable,oldsz,sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    uvmunmap(p->proc_kernel_pagetable,PGROUNDUP(sz),(PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE,0);
+    // kernel_pgt_delmap(p->pagetable,p->proc_kernel_pagetable,oldsz,p->sz);
   }
   p->sz = sz;
+  // proc_kvminithart(p->proc_kernel_pagetable);
   return 0;
 }
 
@@ -285,13 +290,17 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz,p->proc_kernel_pagetable) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
   np->sz = p->sz;
-
+  if (kernel_pgt_addmap(np->pagetable,np->proc_kernel_pagetable,0,p->sz)!=0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
   np->parent = p;
 
   // copy saved user registers.
@@ -313,6 +322,7 @@ fork(void)
   np->state = RUNNABLE;
 
   release(&np->lock);
+  proc_kvminithart(p->proc_kernel_pagetable);
 
   return pid;
 }

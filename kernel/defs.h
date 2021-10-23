@@ -161,16 +161,18 @@ int             uartgetc(void);
 // vm.c
 void            kvminit(void);
 void            kvminithart(void);
+void            proc_kvminithart(pagetable_t);
 uint64          kvmpa(uint64);
 void            kvmmap(uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
+int             proc_mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
 #ifdef SOL_COW
 #else
-int             uvmcopy(pagetable_t, pagetable_t, uint64);
+int             uvmcopy(pagetable_t, pagetable_t, uint64, pagetable_t);
 #endif
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
@@ -184,6 +186,9 @@ pagetable_t     prockvminit(void);
 void            proc_kvmmap(pagetable_t, uint64, uint64, uint64, int);
 void            proc_kvmfree(pagetable_t);           
 void            proc_freewalk(pagetable_t);
+int             kernel_pgt_addmap(pagetable_t proc_pgt,pagetable_t kernel_pgt,uint64 start,uint64 sz);
+
+
 
 // plic.c
 void            plicinit(void);
@@ -229,3 +234,7 @@ int             sockread(struct sock *, uint64, int);
 int             sockwrite(struct sock *, uint64, int);
 void            sockrecvudp(struct mbuf*, uint32, uint16, uint16);
 #endif
+
+// vmcopyin.c
+int             copyinstr_new(pagetable_t, char *, uint64, uint64);
+int             copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);

@@ -21,7 +21,6 @@ exec(char *path, char **argv)
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
   begin_op();
-
   if((ip = namei(path)) == 0){
     end_op();
     return -1;
@@ -48,7 +47,7 @@ exec(char *path, char **argv)
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
     uint64 sz1;
-    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)  // * clear memory with 0
       goto bad;
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
@@ -113,6 +112,10 @@ exec(char *path, char **argv)
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
+  if (kernel_pgt_addmap(pagetable,p->proc_kernel_pagetable,0,p->sz)!=0){
+    goto bad;
+  }
+  // proc_kvminithart(p->proc_kernel_pagetable);
   proc_freepagetable(oldpagetable, oldsz);
 
   if (p->pid==1) {
