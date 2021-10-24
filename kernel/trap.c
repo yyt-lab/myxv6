@@ -77,8 +77,56 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    struct proc *p = myproc();
+    if (p->tickset && p->alarmlock == 0){
+      if (p->tickscnt == p->set_ticks_interval ){
+       
+        p->alarmlock = 1;
+        p->tickscnt = 0;
+        // p->tickset = 1;  // * close   
+        //// (p->oldtrap) = *(p->trapframe);
+        p->his_epc = p->trapframe->epc;
+        p->his_ra = p->trapframe->ra;
+        p->his_sp = p->trapframe->sp;
+        p->his_gp = p->trapframe->gp;
+        p->his_tp = p->trapframe->tp;
+        p->his_t0 = p->trapframe->t0;
+        p->his_t1 = p->trapframe->t1;
+        p->his_t2 = p->trapframe->t2;
+        p->his_s0 = p->trapframe->s0;
+        p->his_s1 = p->trapframe->s1;
+        p->his_a0 = p->trapframe->a0;
+        p->his_a1 = p->trapframe->a1;
+        p->his_a2 = p->trapframe->a2;
+        p->his_a3 = p->trapframe->a3;
+        p->his_a4 = p->trapframe->a4;
+        p->his_a5 = p->trapframe->a5;
+        p->his_a6 = p->trapframe->a6;
+        p->his_a7 = p->trapframe->a7;
+        p->his_s2 = p->trapframe->s2;
+        p->his_s3 = p->trapframe->s3;
+        p->his_s4 = p->trapframe->s4;
+        p->his_s5 = p->trapframe->s5;
+        p->his_s6 = p->trapframe->s6;
+        p->his_s7 = p->trapframe->s7;
+        p->his_s8 = p->trapframe->s8;
+        p->his_s9 = p->trapframe->s9;
+        p->his_s10 = p->trapframe->s10;
+        p->his_s11 = p->trapframe->s11;
+        p->his_t3 = p->trapframe->t3;
+        p->his_t4 = p->trapframe->t4;
+        p->his_t5 = p->trapframe->t5;
+        p->his_t6 = p->trapframe->t6;
+        // usertrapret_alarm((uint64)p->handler);
+        p->trapframe->epc=((uint64)p->handler);
+
+      } else{
+         p->tickscnt++;
+      }
+    }
     yield();
+  }
 
   usertrapret();
 }
@@ -117,6 +165,51 @@ usertrapret(void)
 
   // set S Exception Program Counter to the saved user pc.
   w_sepc(p->trapframe->epc);
+
+  // tell trampoline.S the user page table to switch to.
+  uint64 satp = MAKE_SATP(p->pagetable);
+
+  // jump to trampoline.S at the top of memory, which 
+  // switches to the user page table, restores user registers,
+  // and switches to user mode with sret.
+  uint64 fn = TRAMPOLINE + (userret - trampoline);
+  ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
+}
+
+//
+// return to user space alarm
+//
+void
+usertrapret_alarm(uint64 faddr)
+{
+  struct proc *p = myproc();
+
+  // we're about to switch the destination of traps from
+  // kerneltrap() to usertrap(), so turn off interrupts until
+  // we're back in user space, where usertrap() is correct.
+  intr_off();
+
+  // send syscalls, interrupts, and exceptions to trampoline.S
+  w_stvec(TRAMPOLINE + (uservec - trampoline));
+
+  // set up trapframe values that uservec will need when
+  // the process next re-enters the kernel.
+  p->trapframe->kernel_satp = r_satp();         // kernel page table
+  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+  p->trapframe->kernel_trap = (uint64)usertrap;
+  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+
+  // set up the registers that trampoline.S's sret will use
+  // to get to user space.
+  
+  // set S Previous Privilege mode to User.
+  unsigned long x = r_sstatus();
+  x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+  x |= SSTATUS_SPIE; // enable interrupts in user mode
+  w_sstatus(x);
+
+  // set S Exception Program Counter to the saved user pc.
+  w_sepc(faddr);
 
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);

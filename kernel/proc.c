@@ -120,7 +120,11 @@ found:
     release(&p->lock);
     return 0;
   }
-
+  p->set_ticks_interval = 0;
+  p->handler = 0;
+  p->tickscnt= 0;
+  p->tickset = 0;
+  p->alarmlock= 0;
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));

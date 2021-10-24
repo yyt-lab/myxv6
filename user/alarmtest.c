@@ -35,6 +35,7 @@ periodic()
   count = count + 1;
   printf("alarm!\n");
   sigreturn();
+  // exit(0);
 }
 
 // tests whether the kernel calls
@@ -86,9 +87,14 @@ test1()
   j = 0;
   sigalarm(2, periodic);
   for(i = 0; i < 500000000; i++){
-    if(count >= 10)
+    if(count >= 10){
+      printf("i:%d j:%d\n",i,j);
       break;
+    }
     foo(i, &j);
+    if (i%2500000==0){
+          printf("target i: %d j: %d \n",i,j);
+    }
   }
   if(count < 10){
     printf("\ntest1 failed: too few calls to the handler\n");
@@ -101,6 +107,7 @@ test1()
     // restored correctly, causing i or j or the address ofj
     // to get an incorrect value.
     printf("\ntest1 failed: foo() executed fewer times than it was called\n");
+    printf("target i: %d j: %d\n",i,j);
   } else {
     printf("test1 passed\n");
   }

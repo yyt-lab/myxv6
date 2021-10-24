@@ -29,7 +29,7 @@ uservec:
         csrrw a0, sscratch, a0
 
         # save the user registers in TRAPFRAME
-        sd ra, 40(a0)
+        sd ra, 40(a0)  // * 之所以是40，是因为在trapframe结构体中含有了5个uint64保存的不是寄存器信息
         sd sp, 48(a0)
         sd gp, 56(a0)
         sd tp, 64(a0)
