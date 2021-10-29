@@ -45,7 +45,7 @@ kernelvec:
         sd t6, 240(sp)
 
 	// call the C trap handler in trap.c
-        call kerneltrap
+        call kerneltrap //* after handle the trap in mode , PC will return here
 
         // restore registers.
         ld ra, 0(sp)
@@ -83,6 +83,8 @@ kernelvec:
         addi sp, sp, 256
 
         // return to whatever we were doing in the kernel.
+        // sret是RISV-V指令，复制sepc到pc中
+        //  resumes the interrupted kernel code
         sret
 
         #

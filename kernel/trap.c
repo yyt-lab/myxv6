@@ -227,6 +227,7 @@ void
 kerneltrap()
 {
   int which_dev = 0;
+  //* 先将sepc sstatus保存起来
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();

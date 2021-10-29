@@ -125,6 +125,38 @@ found:
   p->tickscnt= 0;
   p->tickset = 0;
   p->alarmlock= 0;
+  p->his_epc = 0;
+  p->his_ra = 0;
+  p->his_sp = 0;
+  p->his_gp = 0;
+  p->his_tp = 0;
+  p->his_t0 = 0;
+  p->his_t1 = 0;
+  p->his_t2 = 0;
+  p->his_s0 = 0;
+  p->his_s1 = 0;
+  p->his_a0 = 0;
+  p->his_a1 = 0;
+  p->his_a2 = 0;
+  p->his_a3 = 0;
+  p->his_a4 = 0;
+  p->his_a5 = 0;
+  p->his_a6 = 0;
+  p->his_a7 = 0;
+  p->his_s2 = 0;
+  p->his_s3 = 0;
+  p->his_s4 = 0;
+  p->his_s5 = 0;
+  p->his_s6 = 0;
+  p->his_s7 = 0;
+  p->his_s8 = 0;
+  p->his_s9 = 0;
+  p->his_s10 =0;
+  p->his_s11 =0;
+  p->his_t3 = 0;
+  p->his_t4 = 0;
+  p->his_t5 = 0;
+  p->his_t6 = 0;
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
