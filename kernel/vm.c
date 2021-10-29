@@ -142,6 +142,7 @@ kvmpa(uint64 va)
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
+// ! 注意是starting at va  所以在缺页异常的时候，必须要将该处va对其到页面
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
@@ -183,9 +184,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+        continue;
+    //   panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
+        continue;
+    //   panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
