@@ -81,7 +81,7 @@ usertrap(void)
       {
         kfree((void*)ka);
         p->killed = -1;
-      }
+      } 
     }
   } 
   else {
