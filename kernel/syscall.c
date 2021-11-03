@@ -67,11 +67,32 @@ argint(int n, int *ip)
 int
 argaddr(int n, uint64 *ip)
 {
-  *ip = argraw(n);
+  *ip = argraw(n);// * 读取的是用户空间的虚拟地址
   struct proc* p = myproc();
-  if (walkaddr(p->pagetable, )())
-
-  return 0;
+  uint64 pa = walkaddr(p->pagetable, *ip);
+// printf("out loop va 0x%x pa:0x%x\n",*ip,pa);
+//   printf("p->sz %x\n",p->sz);
+  if (pa == 0){ // * not mop
+        uint64 ka = (uint64)kalloc();
+        if (*ip >=  p->sz || (*ip < p->trapframe->sp && pa == 0) || (ka == 0 )){  // * 地址大于栈 & 地址位于guardpage & 物理内存满
+            return -1;
+        }
+        else {
+            uint64 va = PGROUNDDOWN(*ip);  // * 未映射地址所在页的 最低端
+            // printf("*ip %x p->sz %x pa %x\n",*ip,p->sz,pa);
+            // printf(" p->trapframe->sp %x\n", p->trapframe->sp );
+            // printf("here va 0x%x pa:0x%x\n",*ip,pa);
+            // printf("PGROUNDDOWN(*ip) 0x%x\n",va);
+            memset((void*)ka,0,PGSIZE);
+            if (mappages(p->pagetable, va, PGSIZE, ka, PTE_U | PTE_W| PTE_R) != 0)
+            {
+              kfree((void*)ka);
+            //   p->killed = -1;
+              return -1;
+            } 
+        }
+    }
+    return 0;
 }
 
 // Fetch the nth word-sized system call argument as a null-terminated string.

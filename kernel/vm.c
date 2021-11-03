@@ -101,12 +101,21 @@ walkaddr(pagetable_t pagetable, uint64 va)
     return 0;
 
   pte = walk(pagetable, va, 0);
+  if (va == 0xf000){
+   printf("va:%x pte%x\n",va,*pte);   
+   printf("*pte & PTE_V %d\n",*pte & PTE_V);
+   printf("PTE_U %x\n",PTE_U);
+   printf("*pte & PTE_U %d\n",*pte & PTE_U);
+  }
   if(pte == 0)
     return 0;
   if((*pte & PTE_V) == 0)
     return 0;
   if((*pte & PTE_U) == 0)
     return 0;
+if (va == 0xf000){
+   printf("va:%x pte%x\n",va,*pte);   
+  }
   pa = PTE2PA(*pte);
   return pa;
 }
@@ -157,13 +166,17 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V){
+        // printf("pa 0x%x",PTE2PA(*pte));
       panic("remap");
+    }
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
     a += PGSIZE;
     pa += PGSIZE;
+    if (*pte == 0x20a46817)
+        printf("pte 0x%x\n\n",*pte);
   }
   return 0;
 }
@@ -176,7 +189,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
   pte_t *pte;
-
+//   vmprint(pagetable);
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 //   printf("va here is ")
@@ -184,10 +197,6 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if((pte = walk(pagetable, a, 0)) == 0)
         continue;
     //   panic("uvmunmap: walk");
-    // if (*pte == 0x21dad017){
-    //     printf("va:%x",a);
-    //     panic("hereerer!");
-    // }
     if((*pte & PTE_V) == 0)
         continue;
     //   panic("uvmunmap: not mapped");
@@ -195,10 +204,6 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
         continue;
     //   panic("uvmunmap: not a leaf");
     if(do_free){
-        if(a == 0x4000){
-            // printf("free va is 0x%x pte%x\n",a,*pte);
-            // panic("123");
-        }
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
@@ -288,6 +293,7 @@ void
 freewalk(pagetable_t pagetable)
 {
   // there are 2^9 = 512 PTEs in a page table.
+//   vmprint(pagetable);
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
@@ -296,7 +302,8 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
-      printf("i %d pte:%x",i,(pte));
+    //   vmprint(pagetable);
+      printf("i %d pte:%x\n",i,(pte));
       panic("freewalk: leaf");
     }
   }
