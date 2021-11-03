@@ -41,13 +41,29 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
-  int addr;
+  uint64 addr;
   int n;
-
+//   int after_addr;
   if(argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
-  myproc()->sz +=n;
+//   after_addr = addr + n;
+//   printf("n:%x ; %d\n",n,n);
+//   printf("oldsz 0x%x , newsz:%x ; %d\n",addr,addr+n,(addr + n<0)?1:0);
+//   printf("oldsz 0x%x , newsz:%x ; %d\n",PGROUNDUP(addr),PGROUNDUP(addr + n),(addr + n<0)?1:0);
+  if (n>0)
+    myproc()->sz +=n;
+  else if (addr + n<=0){
+    uint64 k=uvmdealloc(myproc()->pagetable, addr, 0);
+    myproc()->sz =k;
+    // return -1;
+  }
+  else{
+    //   printf("here!!\n\n");
+    uint64 k=uvmdealloc(myproc()->pagetable, addr, addr + n);
+    // printf("here p->sz:%x!!\n\n",k);
+    myproc()->sz =k;
+  } 
 //   if(growproc(n) < 0)
 //     return -1;
   return addr;

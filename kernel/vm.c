@@ -179,22 +179,32 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
-
+//   printf("va here is ")
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+        continue;
+    //   panic("uvmunmap: walk");
+    // if (*pte == 0x21dad017){
+    //     printf("va:%x",a);
+    //     panic("hereerer!");
+    // }
     if((*pte & PTE_V) == 0)
         continue;
     //   panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V)
+    if(PTE_FLAGS(*pte) == PTE_V) // * 中间节点，不释放
         continue;
     //   panic("uvmunmap: not a leaf");
     if(do_free){
+        if(a == 0x4000){
+            // printf("free va is 0x%x pte%x\n",a,*pte);
+            // panic("123");
+        }
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
     *pte = 0;
   }
+//   vmprint(pagetable);
 }
 
 // create an empty user page table.
@@ -286,6 +296,7 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
+      printf("i %d pte:%x",i,(pte));
       panic("freewalk: leaf");
     }
   }
@@ -299,6 +310,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
+//   vmprint(pagetable);
   freewalk(pagetable);
 }
 
@@ -317,10 +329,12 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+    if((pte = walk(old, i, 0)) == 0) // * 如果pte不存在，不panic 直接continue
+        continue;
+    //   panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)  // * 如果PTE的valid位无效，同样直接continue，不panic
+        continue;
+    //   panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -443,3 +457,31 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+int depth = 1;
+void vmprint(pagetable_t pgtable)
+{
+  for (int i=0;i<512;i++){
+    pte_t pte = pgtable[i]; // * 先取出的是pgtable entry，先验证pte的权限位
+    if (pte && ((pte & PTE_V) == 1)){
+      switch(depth){
+        case 1:break;
+        case 2:{
+          printf(".. ");
+          break;
+        } 
+        case 3: {
+          printf(".. .. ");
+          break;
+        }
+        default : ;
+      }
+      printf("..%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        depth++;
+        vmprint((pagetable_t)PTE2PA(pte));
+        depth--;
+      }
+    }
+  }
+} 

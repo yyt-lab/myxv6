@@ -68,6 +68,9 @@ int
 argaddr(int n, uint64 *ip)
 {
   *ip = argraw(n);
+  struct proc* p = myproc();
+  if (walkaddr(p->pagetable, )())
+
   return 0;
 }
 

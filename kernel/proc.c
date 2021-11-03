@@ -136,6 +136,8 @@ found:
 static void
 freeproc(struct proc *p)
 {
+    // printf("in free proc\n");
+//   vmprint(p->pagetable);
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -190,9 +192,13 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
+//   vmprint(pagetable);
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+//   printf("proc_freepagetable1\n");
+//   printf("sz:%x\n",sz);
   uvmfree(pagetable, sz);
+//   printf("proc_freepagetable2\n");
 }
 
 // a user program that calls exec("/init")
@@ -345,7 +351,6 @@ exit(int status)
       p->ofile[fd] = 0;
     }
   }
-
   begin_op();
   iput(p->cwd);
   end_op();
@@ -388,6 +393,7 @@ exit(int status)
   release(&original_parent->lock);
 
   // Jump into the scheduler, never to return.
+
   sched();
   panic("zombie exit");
 }

@@ -71,8 +71,13 @@ usertrap(void)
   else if (r_scause() == 15 || r_scause() == 13)
   {
     uint64 va = r_stval();
+    //   printf("trap va : 0x%x\n",va);
+    uint64 pa = walkaddr(p->pagetable,va);  // * 检查该虚拟地址映射到的物理页是否有效
     uint64 ka = (uint64) kalloc();
-    if (ka == 0) p->killed = -1;
+    if (va > p->sz || (va < p->ustackbase && pa == 0) ){
+        p->killed = -1;  // * 高于sbrk()处出现了错误
+        // printf("proc was killed \n");
+    }else if (ka == 0) p->killed = -1;
     else
     {
       memset((void*)ka, 0, PGSIZE);

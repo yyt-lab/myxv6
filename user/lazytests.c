@@ -50,7 +50,7 @@ sparse_memory_unmap(char *s)
 
   for (i = prev_end + PGSIZE; i < new_end; i += PGSIZE * PGSIZE)
     *(char **)i = i;
-
+//   printf("prev_end 0x%x,new_end 0x%x\n",prev_end,new_end);
   for (i = prev_end + PGSIZE; i < new_end; i += PGSIZE * PGSIZE) {
     pid = fork();
     if (pid < 0) {
@@ -58,11 +58,14 @@ sparse_memory_unmap(char *s)
       exit(1);
     } else if (pid == 0) {
       sbrk(-1L * REGION_SZ);
-      *(char **)i = i;
+    //   printf("const char *, ...\n");
+      *(char **)i = i;  // ! KILL 出错了
       exit(0);
     } else {
       int status;
+    //   printf("123\n");
       wait(&status);
+    //   printf("1234\n");
       if (status == 0) {
         printf("memory not unmapped\n");
         exit(1);
