@@ -81,7 +81,9 @@ copyout(char *s)
       printf("open(README) failed\n");
       exit(1);
     }
+    printf("12\n");
     int n = read(fd, (void*)addr, 8192);
+    printf("1212\n");
     if(n > 0){
       printf("read(fd, %p, 8192) returned %d, not -1 or 0\n", addr, n);
       exit(1);
@@ -93,7 +95,9 @@ copyout(char *s)
       printf("pipe() failed\n");
       exit(1);
     }
+    printf("13\n");
     n = write(fds[1], "x", 1);
+    printf("1313\n");
     if(n != 1){
       printf("pipe write failed\n");
       exit(1);

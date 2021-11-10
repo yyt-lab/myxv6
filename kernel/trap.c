@@ -44,7 +44,10 @@ usertrap(void)
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
-
+//   if (r_scause()==13){
+    // printf("in usertrap stval %p\n",r_stval());
+    // vmprint(myproc()->pagetable);
+//   } 
   struct proc *p = myproc();
   
   // save user program counter.
@@ -67,7 +70,14 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if (r_scause() == 13 || r_scause() == 15){   // * page fault 
+    uint64 vafault = r_stval();                 // * 出错的物理地址
+    pagetable_t pgtable = myproc()->pagetable;  // * 当前进程的页表项
+    if (uvmcowcopy(pgtable, vafault) == 0 ) {
+        p->killed = 1;
+    }
+  }
+   else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;

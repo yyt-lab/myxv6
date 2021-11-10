@@ -71,8 +71,10 @@ kvminithart()
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
-  if(va >= MAXVA)
+  if(va >= MAXVA){
+    printf("va %p\n",va);
     panic("walk");
+  }
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
@@ -299,20 +301,53 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
+// // Given a parent process's page table, copy
+// // its memory into a child's page table.
+// // Copies both the page table and the
+// // physical memory.
+// // returns 0 on success, -1 on failure.
+// // frees any allocated pages on failure.
+// int
+// uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+// {
+//   pte_t *pte;
+//   uint64 pa, i;
+//   uint flags;
+//   char *mem;
+
+//   for(i = 0; i < sz; i += PGSIZE){
+//     if((pte = walk(old, i, 0)) == 0)
+//       panic("uvmcopy: pte should exist");
+//     if((*pte & PTE_V) == 0)
+//       panic("uvmcopy: page not present");
+//     pa = PTE2PA(*pte);
+//     flags = PTE_FLAGS(*pte);
+//     if((mem = kalloc()) == 0)
+//       goto err;
+//     memmove(mem, (char*)pa, PGSIZE);
+//     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+//       kfree(mem);
+//       goto err;
+//     }
+//   }
+//   return 0;
+
+//  err:
+//   uvmunmap(new, 0, i / PGSIZE, 1);
+//   return -1;
+// }
+
+// ! cow fork uvmcopy
+// ! copy father pgtable entry to child process
+// ! and set the flags to flags & (~PTE_W)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
-
+    // vmprint(old);
+    // printf("**********************old***\n");
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
@@ -320,18 +355,24 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    *pte = *pte & (~PTE_W );  // * clear father process's PTE_W bit
+    *pte = *pte | PTE_RSW;    // * set RSW area of father proccess
+    flags = flags & (~PTE_W); // * clear write flag and set to child pte
+    flags = flags | PTE_RSW;  // * set RSW area of child proccess
+    
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){ // * map va with father's pa 
       goto err;
     }
+    increase_pgcount(pa);
+    // printf("*********************new***\n");
+    // vmprint(new);
+
   }
   return 0;
 
  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+  uvmunmap(new, 0, i / PGSIZE, 1); // * 失败时，引用计数-1
   return -1;
 }
 
@@ -355,22 +396,66 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if (va0>=MAXVA) return -1;
     pa0 = walkaddr(pagetable, va0);
+    pte_t* pte = walk(pagetable,va0,0);
+    // printf("dstva %x va0 %x pa0 %x pte %p \n",dstva,va0,pa0,*pte);
+    uint64 pa_new;
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
 
+    if ((*pte & PTE_RSW) == PTE_RSW){  //! COW Page
+        pa_new = uvmcowcopy(pagetable, va0);
+    }else { // ! noemal page
+        pa_new = pa0;
+    }
+    // vmprint(pagetable);
+    if (pa_new == 0){
+        return -1;
+    }
+    // printf("dstva %x  pa_new %x pte %p\n",dstva,pa_new,PA2PTE(pa_new));
+
+    memmove((void *)(pa_new + (dstva - va0)), src, n);
+    // printf("13121\n");
     len -= n;
     src += n;
     dstva = va0 + PGSIZE;
   }
   return 0;
+}
+
+// ! lazy copy ,alloc new page and copy old pg to new one
+// ! pgtable : new pgtable
+// ! vafault : error va 
+uint64 uvmcowcopy(pagetable_t pgtable,uint64 vafault)
+{
+    char *mem;
+    if (vafault>MAXVA){
+        return 0;
+    }
+    pte_t* ptefault = walk(pgtable,vafault,0);  // * 子进程 出错页表项
+    uint64 pa = walkaddr(pgtable,vafault);      // * 当前进程的物理地址 == 父进程物理地址
+    if (pa == 0) return 0;
+    if ((*ptefault & PTE_RSW) == PTE_RSW){      // * cow page fault 
+        mem = kalloc();
+        if(mem == 0){
+            return 0;
+        }
+        memmove(mem, (char*)pa, PGSIZE);
+        uvmunmap(pgtable,PGROUNDDOWN(vafault),1,1); // * free map
+        if(mappages(pgtable, PGROUNDDOWN(vafault), PGSIZE,(uint64)mem, (PTE_R | PTE_W | PTE_X | PTE_U)) != 0){ // * map va with father's pa 
+            kfree(mem);
+            return 0;
+        }
+        return (uint64)mem;
+    } else {
+        return 0;
+    }
 }
 
 // Copy from user to kernel.
@@ -440,3 +525,32 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+
+int depth = 1;
+void vmprint(pagetable_t pgtable)
+{
+  for (int i=0;i<512;i++){
+    pte_t pte = pgtable[i]; // * 先取出的是pgtable entry，先验证pte的权限位
+    if (pte && ((pte & PTE_V) == 1)){
+      switch(depth){
+        case 1:break;
+        case 2:{
+          printf(".. ");
+          break;
+        } 
+        case 3: {
+          printf(".. .. ");
+          break;
+        }
+        default : ;
+      }
+      printf("..%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        depth++;
+        vmprint((pagetable_t)PTE2PA(pte));
+        depth--;
+      }
+    }
+  }
+} 

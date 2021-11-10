@@ -22,11 +22,20 @@ struct {
   struct spinlock lock;
   struct run *freelist;
 } kmem;
+struct {
+    struct spinlock lock;
+    int pagecount_[32769];
+} pgcnt;
+
 
 void
 kinit()
 {
-  initlock(&kmem.lock, "kmem");
+  initlock(&kmem.lock,  "kmem");
+  initlock(&pgcnt.lock, "pgcnt");
+  for (int i =0 ;i<32769;i++){
+    pgcnt.pagecount_[i]=1;
+  }
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -51,20 +60,34 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  acquire(&pgcnt.lock);
+  pgcnt.pagecount_[PA2PGREF(pa)]--; // * free时 应用计数-1
+    // printf("pgcnt.pagecount_[%d] %d\n",PA2PGREF(pa),pgcnt.pagecount_[PA2PGREF(pa)] );
+  release(&pgcnt.lock);
+  if (pgcnt.pagecount_[PA2PGREF(pa)] == 0){  // *只有当引用计数为0时，才会释放物理页
+    memset(pa, 1, PGSIZE);
+    // printf("here12323\n\n");
+    r = (struct run*)pa;
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+  }
+//   // Fill with junk to catch dangling refs.
+//   memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+//   r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+//   acquire(&kmem.lock);
+//   r->next = kmem.freelist;
+//   kmem.freelist = r;
+//   release(&kmem.lock);
 }
 
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
+// * r 为按页对其的pa
 void *
 kalloc(void)
 {
@@ -72,11 +95,28 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+//   printf("kalloc%x\n",r);
+  if(r){
     kmem.freelist = r->next;
+    int k = PA2PGREF(r);
+    acquire(&pgcnt.lock);
+    pgcnt.pagecount_[k] = 1; // * kalloc时设置应用计数为1
+    release(&pgcnt.lock);
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+
+// ! increase the pagecount of the specific page
+void 
+increase_pgcount(uint64 pa)
+{
+    int k = PA2PGREF(pa);
+    acquire(&pgcnt.lock);
+    pgcnt.pagecount_[k]++;
+    release(&pgcnt.lock);
 }
